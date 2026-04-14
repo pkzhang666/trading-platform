@@ -53,7 +53,7 @@ const DEMO_USERS = [
     balances: [
       { asset: "BTC" as Asset, available: 10, frozen: 0 },
       { asset: "ETH" as Asset, available: 100, frozen: 0 },
-      { asset: "USDT" as Asset, available: 500000, frozen: 0 }
+      { asset: "USD" as Asset, available: 500000, frozen: 0 }
     ]
   },
   {
@@ -65,7 +65,7 @@ const DEMO_USERS = [
     balances: [
       { asset: "BTC" as Asset, available: 2.5, frozen: 0 },
       { asset: "ETH" as Asset, available: 20, frozen: 0 },
-      { asset: "USDT" as Asset, available: 250000, frozen: 0 }
+      { asset: "USD" as Asset, available: 250000, frozen: 0 }
     ]
   }
 ];
@@ -90,6 +90,63 @@ function round(value: number, digits = 8): number {
   return Number(value.toFixed(digits));
 }
 
+function normalizeSymbol(symbol: string): MarketSymbol {
+  if (symbol === "BTC/USDT") {
+    return "BTC/USD";
+  }
+
+  if (symbol === "ETH/USDT") {
+    return "ETH/USD";
+  }
+
+  return symbol as MarketSymbol;
+}
+
+function normalizeAsset(asset: string): Asset {
+  if (asset === "USDT") {
+    return "USD";
+  }
+
+  return asset as Asset;
+}
+
+function normalizeState(state: AppState): AppState {
+  return {
+    ...state,
+    balances: Object.fromEntries(
+      Object.entries(state.balances ?? {}).map(([userId, balances]) => [
+        userId,
+        balances.map((balance) => ({
+          ...balance,
+          asset: normalizeAsset(balance.asset)
+        }))
+      ])
+    ) as Record<string, Balance[]>,
+    deposits: (state.deposits ?? []).map((deposit) => ({
+      ...deposit,
+      asset: normalizeAsset(deposit.asset)
+    })),
+    withdrawals: (state.withdrawals ?? []).map((withdrawal) => ({
+      ...withdrawal,
+      asset: normalizeAsset(withdrawal.asset)
+    })),
+    orders: (state.orders ?? []).map((order) => ({
+      ...order,
+      symbol: normalizeSymbol(order.symbol)
+    })),
+    trades: (state.trades ?? []).map((trade) => ({
+      ...trade,
+      symbol: normalizeSymbol(trade.symbol)
+    })),
+    markets: (state.markets ?? markets).map((market) => ({
+      ...market,
+      symbol: normalizeSymbol(market.symbol),
+      baseAsset: normalizeAsset(market.baseAsset),
+      quoteAsset: normalizeAsset(market.quoteAsset)
+    }))
+  };
+}
+
 export class TradingPlatform {
   private readonly filePath: string;
 
@@ -107,7 +164,7 @@ export class TradingPlatform {
     fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
 
     if (fs.existsSync(this.filePath)) {
-      return JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as AppState;
+      return normalizeState(JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as AppState);
     }
 
     const initialState: AppState = {
@@ -148,10 +205,10 @@ export class TradingPlatform {
       return;
     }
 
-    this.placeOrder(admin.id, { symbol: "BTC/USDT", side: "sell", price: 64200, quantity: 0.35 });
-    this.placeOrder(admin.id, { symbol: "BTC/USDT", side: "buy", price: 63850, quantity: 0.4 });
-    this.placeOrder(admin.id, { symbol: "ETH/USDT", side: "sell", price: 3220, quantity: 4 });
-    this.placeOrder(admin.id, { symbol: "ETH/USDT", side: "buy", price: 3180, quantity: 4.5 });
+    this.placeOrder(admin.id, { symbol: "BTC/USD", side: "sell", price: 64200, quantity: 0.35 });
+    this.placeOrder(admin.id, { symbol: "BTC/USD", side: "buy", price: 63850, quantity: 0.4 });
+    this.placeOrder(admin.id, { symbol: "ETH/USD", side: "sell", price: 3220, quantity: 4 });
+    this.placeOrder(admin.id, { symbol: "ETH/USD", side: "buy", price: 3180, quantity: 4.5 });
   }
 
   subscribe(listener: (event: ActivityEvent) => void): () => void {
@@ -352,7 +409,7 @@ export class TradingPlatform {
     this.state.users.push(user);
     this.state.balances[user.id] = assets.map((asset) => ({
       asset,
-      available: asset === "USDT" ? 25000 : 0,
+      available: asset === "USD" ? 25000 : 0,
       frozen: 0
     }));
     this.persist();
@@ -408,6 +465,17 @@ export class TradingPlatform {
 
   listMarkets(): Market[] {
     return clone(this.state.markets);
+  }
+
+  updateReferencePrice(symbol: MarketSymbol, price: number): void {
+    const market = this.state.markets.find((item) => item.symbol === symbol);
+    if (!market || price <= 0) {
+      return;
+    }
+
+    market.lastPrice = round(price, market.pricePrecision);
+    this.persist();
+    this.emit({ type: "market", symbol });
   }
 
   getOrderBook(symbol: MarketSymbol): OrderBookSnapshot {

@@ -1,6 +1,13 @@
 import type React from "react";
 import { useEffect, useState } from "react";
-import { formatAssetAmount, type AdminOverview, type AuthResponse, type User, type Withdrawal } from "@trading-platform/common";
+import {
+  formatAssetAmount,
+  type AdminOverview,
+  type AuthResponse,
+  type SystemHealth,
+  type User,
+  type Withdrawal
+} from "@trading-platform/common";
 
 const apiBaseUrl =
   import.meta.env.VITE_API_BASE_URL ??
@@ -34,6 +41,7 @@ export function App(): React.JSX.Element {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [health, setHealth] = useState<SystemHealth | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -49,12 +57,13 @@ export function App(): React.JSX.Element {
     void Promise.all([
       request<AdminOverview>("/admin/overview", undefined, token),
       request<User[]>("/admin/users", undefined, token),
-      request<Withdrawal[]>("/admin/withdrawals", undefined, token)
-    ])
-      .then(([nextOverview, nextUsers, nextWithdrawals]) => {
+      request<Withdrawal[]>("/admin/withdrawals", undefined, token),
+      request<SystemHealth>("/system/health", undefined, token)
+    ]).then(([nextOverview, nextUsers, nextWithdrawals, nextHealth]) => {
         setOverview(nextOverview);
         setUsers(nextUsers);
         setWithdrawals(nextWithdrawals);
+        setHealth(nextHealth);
       })
       .catch((err: Error) => setError(err.message));
   }, [token]);
@@ -190,6 +199,26 @@ export function App(): React.JSX.Element {
                   </div>
                 ))}
               </div>
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-header">
+              <h2>Market Data Health</h2>
+              <span>{health?.ok ? "nominal" : "degraded"}</span>
+            </div>
+            <div className="list-stack">
+              {health?.services.map((service) => (
+                <div key={service.name} className="list-row">
+                  <div>
+                    <strong>{service.name}</strong>
+                    <small>{service.details ?? "No details"}</small>
+                  </div>
+                  <span className={service.ok ? "status-chip approved" : "status-chip rejected"}>
+                    {service.ok ? "ok" : "degraded"}
+                  </span>
+                </div>
+              ))}
             </div>
           </section>
         </>

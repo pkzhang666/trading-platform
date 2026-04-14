@@ -5,6 +5,7 @@
 ### Runtime components
 
 - `apps/api`: trading API, matching engine, balance ledger, wallet request handling
+- `apps/api/src/live-market-data.ts`: Coinbase Exchange market data adapter for BTC/USD and ETH/USD
 - `apps/web`: trader interface
 - `apps/admin`: operations console
 - `packages/common`: shared domain types
@@ -15,8 +16,9 @@
 2. Trader submits a limit order.
 3. API reserves balances and routes the order through the in-process matching engine.
 4. If a cross exists, the engine creates trades and updates balances.
-5. Market and private websocket channels push fresh snapshots to clients.
-6. Withdrawals are frozen until an admin reviews them in the admin console.
+5. Coinbase market-data connections ingest live BTC/USD and ETH/USD prices plus L2 order book updates.
+6. Public and private websocket channels push fresh snapshots to clients.
+7. Withdrawals are frozen until an admin reviews them in the admin console.
 
 ## Production target
 

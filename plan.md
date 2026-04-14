@@ -181,7 +181,7 @@ Ship a narrow but real exchange slice:
 
 - email + MFA login
 - KYC integration stub
-- BTC/USDT and ETH/USDT spot markets
+- BTC/USD and ETH/USD spot markets with live reference data
 - internal ledger
 - matching engine
 - wallet deposit detection

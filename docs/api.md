@@ -3,11 +3,17 @@
 ## Public endpoints
 
 - `GET /health`
+- `GET /ready`
 - `POST /api/auth/register`
 - `POST /api/auth/login`
 - `GET /api/markets`
+- `GET /api/live/markets`
+- `GET /api/live/markets/:symbol`
 - `GET /api/orderbook/:symbol`
 - `GET /api/trades/:symbol`
+- `GET /api/live/orderbook/:symbol`
+- `GET /api/live/trades/:symbol`
+- `GET /api/system/health`
 
 ## Authenticated trader endpoints
 
@@ -40,7 +46,14 @@ Endpoint: `/ws`
 Query params:
 
 - `channel=market`
-- `symbol=BTC/USDT` or `ETH/USDT`
+- `symbol=BTC/USD` or `ETH/USD`
+
+### Live market stream
+
+Query params:
+
+- `channel=live-market`
+- `symbol=BTC/USD` or `ETH/USD`
 
 ### Private stream
 

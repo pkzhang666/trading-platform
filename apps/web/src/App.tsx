@@ -1,13 +1,13 @@
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  type FeedConnectionStatus,
   formatAssetAmount,
   type AuthResponse,
   type DashboardState,
-  type Market,
+  type LiveMarketSnapshot,
   type MarketSymbol,
-  type OrderBookSnapshot,
-  type Trade
+  type SystemHealth
 } from "@trading-platform/common";
 
 const apiBaseUrl =
@@ -41,23 +41,28 @@ export function App(): React.JSX.Element {
   const [email, setEmail] = useState("trader@trade.local");
   const [password, setPassword] = useState("Trader123!");
   const [name, setName] = useState("New Trader");
-  const [markets, setMarkets] = useState<Market[]>([]);
+  const [markets, setMarkets] = useState<LiveMarketSnapshot[]>([]);
   const [dashboard, setDashboard] = useState<DashboardState | null>(null);
-  const [selectedMarket, setSelectedMarket] = useState<MarketSymbol>("BTC/USDT");
-  const [orderBook, setOrderBook] = useState<OrderBookSnapshot | null>(null);
-  const [trades, setTrades] = useState<Trade[]>([]);
+  const [selectedMarket, setSelectedMarket] = useState<MarketSymbol>("BTC/USD");
+  const [liveMarket, setLiveMarket] = useState<LiveMarketSnapshot | null>(null);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [price, setPrice] = useState("64000");
   const [quantity, setQuantity] = useState("0.1");
   const [side, setSide] = useState<"buy" | "sell">("buy");
-  const [depositAsset, setDepositAsset] = useState("USDT");
+  const [depositAsset, setDepositAsset] = useState("USD");
   const [depositAmount, setDepositAmount] = useState("1000");
-  const [withdrawAsset, setWithdrawAsset] = useState("USDT");
+  const [withdrawAsset, setWithdrawAsset] = useState("USD");
   const [withdrawAmount, setWithdrawAmount] = useState("100");
   const [withdrawAddress, setWithdrawAddress] = useState("demo-wallet-address");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    request<Market[]>("/markets").then(setMarkets).catch((err: Error) => setError(err.message));
+    void Promise.all([request<LiveMarketSnapshot[]>("/live/markets"), request<SystemHealth>("/system/health")])
+      .then(([nextMarkets, health]) => {
+        setMarkets(nextMarkets);
+        setSystemHealth(health);
+      })
+      .catch((err: Error) => setError(err.message));
   }, []);
 
   useEffect(() => {
@@ -72,15 +77,22 @@ export function App(): React.JSX.Element {
   }, [token]);
 
   useEffect(() => {
-    const socket = new WebSocket(`${wsBaseUrl}/ws?channel=market&symbol=${encodeURIComponent(selectedMarket)}`);
+    const socket = new WebSocket(`${wsBaseUrl}/ws?channel=live-market&symbol=${encodeURIComponent(selectedMarket)}`);
     socket.onmessage = (event) => {
-      const message = JSON.parse(event.data) as { payload: { orderBook: OrderBookSnapshot; trades: Trade[] } };
-      setOrderBook(message.payload.orderBook);
-      setTrades(message.payload.trades);
+      const message = JSON.parse(event.data) as { payload: LiveMarketSnapshot };
+      setLiveMarket(message.payload);
+      setPrice(String(message.payload.lastPrice || ""));
     };
 
     return () => socket.close();
   }, [selectedMarket]);
+
+  useEffect(() => {
+    const target = markets.find((market) => market.symbol === selectedMarket);
+    if (target?.lastPrice) {
+      setPrice(String(target.lastPrice));
+    }
+  }, [markets, selectedMarket]);
 
   useEffect(() => {
     if (!token) {
@@ -100,6 +112,18 @@ export function App(): React.JSX.Element {
     () => markets.find((market) => market.symbol === selectedMarket),
     [markets, selectedMarket]
   );
+
+  function statusTone(status: FeedConnectionStatus): string {
+    if (status === "connected") {
+      return "status-chip approved";
+    }
+
+    if (status === "connecting") {
+      return "status-chip pending";
+    }
+
+    return "status-chip rejected";
+  }
 
   async function handleAuth(): Promise<void> {
     setError("");
@@ -197,7 +221,7 @@ export function App(): React.JSX.Element {
           </div>
           <div className="hero-stat">
             <span>Last Price</span>
-            <strong>{formatAssetAmount(orderBook?.lastPrice ?? selectedMarketMeta?.lastPrice ?? 0, 2)}</strong>
+            <strong>{formatAssetAmount(liveMarket?.lastPrice ?? selectedMarketMeta?.lastPrice ?? 0, 2)}</strong>
           </div>
         </div>
       </section>
@@ -303,12 +327,19 @@ export function App(): React.JSX.Element {
             <div className="panel">
               <div className="panel-header">
                 <h2>Order Book</h2>
-                <span>Live</span>
+                <span>{liveMarket?.source ?? "coinbase"}</span>
+              </div>
+              <div className="list-row">
+                <div>
+                  <strong>{selectedMarket}</strong>
+                  <small>{liveMarket?.connectionMessage ?? "Waiting for live feed..."}</small>
+                </div>
+                <span className={statusTone(liveMarket?.status ?? "disconnected")}>{liveMarket?.status ?? "disconnected"}</span>
               </div>
               <div className="book-columns">
                 <div>
                   <h3>Bids</h3>
-                  {orderBook?.bids.map((level) => (
+                  {liveMarket?.orderBook.bids.map((level) => (
                     <div key={`bid-${level.price}`} className="book-row positive">
                       <span>{formatAssetAmount(level.price, 2)}</span>
                       <span>{formatAssetAmount(level.quantity, 6)}</span>
@@ -317,7 +348,7 @@ export function App(): React.JSX.Element {
                 </div>
                 <div>
                   <h3>Asks</h3>
-                  {orderBook?.asks.map((level) => (
+                  {liveMarket?.orderBook.asks.map((level) => (
                     <div key={`ask-${level.price}`} className="book-row negative">
                       <span>{formatAssetAmount(level.price, 2)}</span>
                       <span>{formatAssetAmount(level.quantity, 6)}</span>
@@ -330,10 +361,10 @@ export function App(): React.JSX.Element {
             <div className="panel">
               <div className="panel-header">
                 <h2>Recent Trades</h2>
-                <span>{trades.length} fills</span>
+                <span>{liveMarket?.trades.length ?? 0} live prints</span>
               </div>
               <div className="trades-list">
-                {trades.map((trade) => (
+                {liveMarket?.trades.map((trade) => (
                   <div key={trade.id} className="trade-row">
                     <span>{formatAssetAmount(trade.price, 2)}</span>
                     <span>{formatAssetAmount(trade.quantity, 6)}</span>
@@ -355,7 +386,7 @@ export function App(): React.JSX.Element {
                 <select value={depositAsset} onChange={(event) => setDepositAsset(event.target.value)}>
                   <option>BTC</option>
                   <option>ETH</option>
-                  <option>USDT</option>
+                  <option>USD</option>
                 </select>
               </label>
               <label>
@@ -377,7 +408,7 @@ export function App(): React.JSX.Element {
                 <select value={withdrawAsset} onChange={(event) => setWithdrawAsset(event.target.value)}>
                   <option>BTC</option>
                   <option>ETH</option>
-                  <option>USDT</option>
+                  <option>USD</option>
                 </select>
               </label>
               <label>
@@ -428,6 +459,26 @@ export function App(): React.JSX.Element {
                   <button className="ghost-button" onClick={() => void handleCancelOrder(order.id)}>
                     Cancel
                   </button>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-header">
+              <h2>Platform Health</h2>
+              <span>{systemHealth?.ok ? "Nominal" : "Attention needed"}</span>
+            </div>
+            <div className="list-stack">
+              {systemHealth?.services.map((service) => (
+                <div key={service.name} className="list-row">
+                  <div>
+                    <strong>{service.name}</strong>
+                    <small>{service.details ?? "No details"}</small>
+                  </div>
+                  <span className={service.ok ? "status-chip approved" : "status-chip rejected"}>
+                    {service.ok ? "ok" : "degraded"}
+                  </span>
                 </div>
               ))}
             </div>

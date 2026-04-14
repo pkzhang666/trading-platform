@@ -7,6 +7,7 @@ Responsibilities:
 - authenticate users
 - maintain balances and sessions
 - place, match, and cancel orders
+- ingest live BTC/USD and ETH/USD data from Coinbase Exchange
 - expose market and admin APIs
 - broadcast websocket updates
 

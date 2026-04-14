@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 import { z } from "zod";
 import { assets, type Asset, type MarketSymbol } from "@trading-platform/common";
 import { TradingPlatform } from "./domain.js";
+import { CoinbaseMarketDataService } from "./live-market-data.js";
 
 dotenv.config();
 
@@ -15,6 +16,13 @@ const dataFile = process.env.DATA_FILE ?? "./data/demo-exchange.json";
 
 const app = express();
 const platform = new TradingPlatform(dataFile);
+const liveMarketData = new CoinbaseMarketDataService();
+
+void liveMarketData.start();
+liveMarketData.subscribe((symbol) => {
+  const liveMarket = liveMarketData.getMarket(symbol);
+  platform.updateReferencePrice(symbol, liveMarket.lastPrice);
+});
 
 app.use(cors());
 app.use(express.json());
@@ -29,14 +37,14 @@ const registerSchema = authSchema.extend({
 });
 
 const placeOrderSchema = z.object({
-  symbol: z.enum(["BTC/USDT", "ETH/USDT"]),
+  symbol: z.enum(["BTC/USD", "ETH/USD"]),
   side: z.enum(["buy", "sell"]),
   price: z.number().positive(),
   quantity: z.number().positive()
 });
 
 const depositSchema = z.object({
-  asset: z.enum(["BTC", "ETH", "USDT"]),
+  asset: z.enum(["BTC", "ETH", "USD"]),
   amount: z.number().positive()
 });
 
@@ -78,7 +86,19 @@ function requireAdmin(req: express.Request, _res: express.Response, next: expres
 }
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    marketData: liveMarketData.getHealth()
+  });
+});
+
+app.get("/ready", (_req, res) => {
+  const health = liveMarketData.getHealth();
+  const ready = liveMarketData.listMarkets().every((market) => market.lastPrice > 0);
+  res.status(ready ? 200 : 503).json({
+    ...health,
+    ok: ready
+  });
 });
 
 app.post("/api/auth/register", (req, res, next) => {
@@ -114,12 +134,32 @@ app.get("/api/markets", (_req, res) => {
   res.json(platform.listMarkets());
 });
 
+app.get("/api/live/markets", (_req, res) => {
+  res.json(liveMarketData.listMarkets());
+});
+
+app.get("/api/live/markets/:symbol", (req, res) => {
+  res.json(liveMarketData.getMarket(String(req.params.symbol) as MarketSymbol));
+});
+
 app.get("/api/orderbook/:symbol", (req, res) => {
   res.json(platform.getOrderBook(String(req.params.symbol) as MarketSymbol));
 });
 
 app.get("/api/trades/:symbol", (req, res) => {
   res.json(platform.listRecentTrades(String(req.params.symbol) as MarketSymbol));
+});
+
+app.get("/api/live/orderbook/:symbol", (req, res) => {
+  res.json(liveMarketData.getMarket(String(req.params.symbol) as MarketSymbol).orderBook);
+});
+
+app.get("/api/live/trades/:symbol", (req, res) => {
+  res.json(liveMarketData.getMarket(String(req.params.symbol) as MarketSymbol).trades);
+});
+
+app.get("/api/system/health", (_req, res) => {
+  res.json(liveMarketData.getHealth());
 });
 
 app.get("/api/orders", requireAuth, (req, res) => {
@@ -214,7 +254,7 @@ wss.on("connection", (socket, req) => {
   const channel = url.searchParams.get("channel");
 
   if (channel === "market") {
-    const symbol = (url.searchParams.get("symbol") ?? "BTC/USDT") as MarketSymbol;
+    const symbol = (url.searchParams.get("symbol") ?? "BTC/USD") as MarketSymbol;
     const sendSnapshot = (): void => {
       socket.send(
         JSON.stringify({
@@ -230,6 +270,28 @@ wss.on("connection", (socket, req) => {
     sendSnapshot();
     const unsubscribe = platform.subscribe((event) => {
       if (event.type === "market" && event.symbol === symbol) {
+        sendSnapshot();
+      }
+    });
+
+    socket.on("close", unsubscribe);
+    return;
+  }
+
+  if (channel === "live-market") {
+    const symbol = (url.searchParams.get("symbol") ?? "BTC/USD") as MarketSymbol;
+    const sendSnapshot = (): void => {
+      socket.send(
+        JSON.stringify({
+          type: "live-market.snapshot",
+          payload: liveMarketData.getMarket(symbol)
+        })
+      );
+    };
+
+    sendSnapshot();
+    const unsubscribe = liveMarketData.subscribe((nextSymbol) => {
+      if (nextSymbol === symbol) {
         sendSnapshot();
       }
     });

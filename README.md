@@ -1,8 +1,9 @@
 # Trading Platform
 
-A runnable MVP trading platform inspired by OKX, packaged as a Node monorepo with:
+A production-oriented trading platform foundation inspired by OKX, packaged as a Node monorepo with:
 
 - a spot trading API with a matching engine and internal ledger
+- live BTC/USD and ETH/USD reference market data from Coinbase Exchange
 - a trader-facing web app
 - an admin console for withdrawal approvals
 - Docker packaging for all apps
@@ -14,7 +15,7 @@ A runnable MVP trading platform inspired by OKX, packaged as a Node monorepo wit
 ### Product surface
 
 - user registration and login
-- market list for `BTC/USDT` and `ETH/USDT`
+- market list for `BTC/USD` and `ETH/USD`
 - limit order placement and cancellation
 - live order book and trade feed over WebSocket
 - balances, deposits, and withdrawal requests
@@ -90,9 +91,21 @@ Services:
 - Trader: `trader@trade.local` / `Trader123!`
 - Admin: `admin@trade.local` / `Admin123!`
 
+## Live market data
+
+The platform now ingests live BTC/USD and ETH/USD data from Coinbase Exchange and exposes it through:
+
+- REST endpoints under `/api/live/*`
+- WebSocket channel `live-market`
+- system health endpoints `/health`, `/ready`, and `/api/system/health`
+
+This gives the public market view real exchange prices and order book movement while the internal order-entry flow remains the platform's own matching environment.
+
+On Windows in this environment, the initial live-market warm-up can take roughly 20-30 seconds while the first Coinbase snapshots are fetched.
+
 ## Architecture notes
 
-This repository is an MVP, not a licensed production exchange. The current API uses a file-backed state store so the whole platform can run immediately without external dependencies.
+This repository is still not a licensed production exchange. The current API uses a file-backed state store so the whole platform can run immediately without external dependencies.
 
 For production hardening, the next upgrades should be:
 

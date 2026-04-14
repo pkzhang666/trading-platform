@@ -1,10 +1,11 @@
-export type Asset = "BTC" | "ETH" | "USDT";
-export type MarketSymbol = "BTC/USDT" | "ETH/USDT";
+export type Asset = "BTC" | "ETH" | "USD";
+export type MarketSymbol = "BTC/USD" | "ETH/USD";
 export type OrderSide = "buy" | "sell";
 export type OrderType = "limit";
 export type OrderStatus = "open" | "partially_filled" | "filled" | "cancelled";
 export type UserRole = "trader" | "admin";
 export type WithdrawalStatus = "pending" | "approved" | "rejected";
+export type FeedConnectionStatus = "connecting" | "connected" | "degraded" | "disconnected";
 
 export interface User {
   id: string;
@@ -95,6 +96,40 @@ export interface OrderBookSnapshot {
   lastPrice: number;
 }
 
+export interface LiveTrade {
+  id: string;
+  symbol: MarketSymbol;
+  price: number;
+  quantity: number;
+  side: "buy" | "sell" | "unknown";
+  source: "coinbase";
+  createdAt: string;
+}
+
+export interface LiveMarketSnapshot {
+  symbol: MarketSymbol;
+  source: "coinbase";
+  status: FeedConnectionStatus;
+  lastPrice: number;
+  bestBid: number;
+  bestAsk: number;
+  volume24h: number;
+  updatedAt: string;
+  orderBook: OrderBookSnapshot;
+  trades: LiveTrade[];
+  connectionMessage?: string;
+}
+
+export interface SystemHealth {
+  ok: boolean;
+  services: Array<{
+    name: string;
+    ok: boolean;
+    details?: string;
+    updatedAt: string;
+  }>;
+}
+
 export interface AuthResponse {
   token: string;
   user: User;
@@ -119,21 +154,21 @@ export interface ApiError {
   error: string;
 }
 
-export const assets: Asset[] = ["BTC", "ETH", "USDT"];
+export const assets: Asset[] = ["BTC", "ETH", "USD"];
 
 export const markets: Market[] = [
   {
-    symbol: "BTC/USDT",
+    symbol: "BTC/USD",
     baseAsset: "BTC",
-    quoteAsset: "USDT",
+    quoteAsset: "USD",
     lastPrice: 64000,
     pricePrecision: 2,
     quantityPrecision: 5
   },
   {
-    symbol: "ETH/USDT",
+    symbol: "ETH/USD",
     baseAsset: "ETH",
-    quoteAsset: "USDT",
+    quoteAsset: "USD",
     lastPrice: 3200,
     pricePrecision: 2,
     quantityPrecision: 4
