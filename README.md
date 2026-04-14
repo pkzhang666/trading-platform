@@ -41,8 +41,9 @@ trading platform/
 │  └─ common/           # Shared types and market metadata
 ├─ infra/
 │  └─ terraform/
-│     ├─ aws/           # AWS deployment blueprint
-│     └─ gcp/           # GCP deployment blueprint
+│     ├─ aws/           # AWS environment root
+│     ├─ gcp/           # GCP environment root
+│     └─ modules/       # Reusable Terraform modules
 ├─ docs/
 │  └─ api.md            # Endpoint summary
 ├─ .github/workflows/   # CI/CD pipelines
@@ -128,7 +129,10 @@ The deployment workflows expect repository secrets and cloud credentials to be c
 
 ## Terraform overview
 
-- AWS blueprint targets VPC, ECR, ECS Fargate, ALB, CloudWatch Logs, and IAM roles
+- AWS environment root composes reusable modules for networking and ECS services
+- GCP environment root composes reusable modules for service accounts, Artifact Registry, and Cloud Run services
+- The module layout now follows the same reusable-composition style used elsewhere in this workspace
+- AWS blueprint targets VPC, ECS Fargate, ALB, CloudWatch Logs, and IAM roles
 - GCP blueprint targets Artifact Registry, Cloud Run services, service accounts, and IAM bindings
 
 The Terraform directories are designed to be environment-driven via variables and CI inputs.

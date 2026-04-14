@@ -1,20 +1,24 @@
 output "artifact_registry_repository" {
-  value       = google_artifact_registry_repository.containers.name
+  value       = module.artifact_registry.name
   description = "Artifact Registry repository for platform images."
 }
 
+output "runtime_service_account_email" {
+  value       = module.runtime_service_account.email
+  description = "Runtime service account email."
+}
+
 output "api_url" {
-  value       = google_cloud_run_v2_service.api.uri
+  value       = module.api_service.uri
   description = "Cloud Run API URL."
 }
 
 output "web_url" {
-  value       = google_cloud_run_v2_service.web.uri
+  value       = module.web_service.uri
   description = "Cloud Run trader web URL."
 }
 
 output "admin_url" {
-  value       = google_cloud_run_v2_service.admin.uri
+  value       = module.admin_service.uri
   description = "Cloud Run admin URL."
 }
-

@@ -44,6 +44,7 @@ The intended production split is:
 - ECS Fargate for stateless app services
 - ALB for ingress
 - CloudWatch for logs and metrics
+- reusable Terraform modules for networking and service deployment
 
 ### GCP
 
@@ -51,6 +52,7 @@ The intended production split is:
 - Cloud Run for stateless app services
 - IAM service accounts per service
 - Cloud Logging and Cloud Monitoring
+- reusable Terraform modules for service account, registry, and runtime service composition
 
 ### Multi-cloud
 

@@ -17,3 +17,8 @@ output "ecs_cluster_name" {
   value       = aws_ecs_cluster.main.name
   description = "ECS cluster name."
 }
+
+output "public_subnet_ids" {
+  value       = module.networking.public_subnet_ids
+  description = "Public subnet IDs."
+}
