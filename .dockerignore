@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.github
+.terraform
+*.log
+apps/*/dist
+packages/*/dist
+infra/terraform/*/.terraform
+infra/terraform/*/.terraform.lock.hcl
+data

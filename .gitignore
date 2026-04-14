@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+.turbo/
+.env
+.env.local
+data/
+apps/api/data/
+*.log
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+.DS_Store

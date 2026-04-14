@@ -1,0 +1,67 @@
+name: Deploy AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        default: dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trading platform
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION || 'us-east-1' }}.amazonaws.com
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Ensure ECR repositories exist
+        run: |
+          aws ecr describe-repositories --repository-names trading-platform-api || aws ecr create-repository --repository-name trading-platform-api
+          aws ecr describe-repositories --repository-names trading-platform-web || aws ecr create-repository --repository-name trading-platform-web
+          aws ecr describe-repositories --repository-names trading-platform-admin || aws ecr create-repository --repository-name trading-platform-admin
+
+      - name: Build and push API image
+        run: |
+          docker build -f apps/api/Dockerfile -t $ECR_REGISTRY/trading-platform-api:${{ github.sha }} .
+          docker push $ECR_REGISTRY/trading-platform-api:${{ github.sha }}
+
+      - name: Build and push Web image
+        run: |
+          docker build -f apps/web/Dockerfile --build-arg VITE_API_BASE_URL=/api -t $ECR_REGISTRY/trading-platform-web:${{ github.sha }} .
+          docker push $ECR_REGISTRY/trading-platform-web:${{ github.sha }}
+
+      - name: Build and push Admin image
+        run: |
+          docker build -f apps/admin/Dockerfile --build-arg VITE_API_BASE_URL=/api -t $ECR_REGISTRY/trading-platform-admin:${{ github.sha }} .
+          docker push $ECR_REGISTRY/trading-platform-admin:${{ github.sha }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform -chdir=infra/terraform/aws init
+
+      - name: Terraform Apply
+        run: terraform -chdir=infra/terraform/aws apply -auto-approve -var="environment=${{ github.event.inputs.environment }}" -var="aws_region=${{ env.AWS_REGION }}" -var="api_container_image=$ECR_REGISTRY/trading-platform-api:${{ github.sha }}" -var="web_container_image=$ECR_REGISTRY/trading-platform-web:${{ github.sha }}" -var="admin_container_image=$ECR_REGISTRY/trading-platform-admin:${{ github.sha }}"

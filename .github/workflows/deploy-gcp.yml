@@ -1,0 +1,67 @@
+name: Deploy GCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        default: dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trading platform
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth
+        run: gcloud auth configure-docker $GCP_REGION-docker.pkg.dev --quiet
+
+      - name: Ensure Artifact Registry repository exists
+        run: |
+          gcloud artifacts repositories describe trading-platform-${{ github.event.inputs.environment }} --location=$GCP_REGION --project=${{ secrets.GCP_PROJECT_ID }} || gcloud artifacts repositories create trading-platform-${{ github.event.inputs.environment }} --location=$GCP_REGION --repository-format=docker --project=${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Build and push API image
+        run: |
+          docker build -f apps/api/Dockerfile -t $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/api:${{ github.sha }} .
+          docker push $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/api:${{ github.sha }}
+
+      - name: Build and push Web image
+        run: |
+          docker build -f apps/web/Dockerfile --build-arg VITE_API_BASE_URL=${{ vars.GCP_API_BASE_URL }} -t $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/web:${{ github.sha }} .
+          docker push $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/web:${{ github.sha }}
+
+      - name: Build and push Admin image
+        run: |
+          docker build -f apps/admin/Dockerfile --build-arg VITE_API_BASE_URL=${{ vars.GCP_API_BASE_URL }} -t $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/admin:${{ github.sha }} .
+          docker push $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/admin:${{ github.sha }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform -chdir=infra/terraform/gcp init
+
+      - name: Terraform Apply
+        run: terraform -chdir=infra/terraform/gcp apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}" -var="environment=${{ github.event.inputs.environment }}" -var="region=${{ env.GCP_REGION }}" -var="api_container_image=$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/api:${{ github.sha }}" -var="web_container_image=$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/web:${{ github.sha }}" -var="admin_container_image=$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/admin:${{ github.sha }}"

@@ -1,0 +1,5 @@
+project_id            = "my-gcp-project"
+environment           = "dev"
+api_container_image   = "us-central1-docker.pkg.dev/my-gcp-project/trading-platform-dev/api:latest"
+web_container_image   = "us-central1-docker.pkg.dev/my-gcp-project/trading-platform-dev/web:latest"
+admin_container_image = "us-central1-docker.pkg.dev/my-gcp-project/trading-platform-dev/admin:latest"

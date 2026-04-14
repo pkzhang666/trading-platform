@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trading platform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: trading platform/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Typecheck
+        run: npm run check
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: Terraform init AWS
+        run: terraform -chdir=infra/terraform/aws init -backend=false
+
+      - name: Terraform validate AWS
+        run: terraform -chdir=infra/terraform/aws validate
+
+      - name: Terraform init GCP
+        run: terraform -chdir=infra/terraform/gcp init -backend=false
+
+      - name: Terraform validate GCP
+        run: terraform -chdir=infra/terraform/gcp validate

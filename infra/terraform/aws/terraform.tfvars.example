@@ -1,0 +1,4 @@
+environment         = "dev"
+api_container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/trading-platform-api:latest"
+web_container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/trading-platform-web:latest"
+admin_container_image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/trading-platform-admin:latest"
