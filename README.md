@@ -124,8 +124,11 @@ See [architecture.md](./architecture.md) and [services.md](./services.md) for th
 - `ci.yml` also runs API tests plus Terraform formatting and validation
 - `deploy-aws.yml` builds images and runs Terraform in `infra/terraform/aws`
 - `deploy-gcp.yml` builds images and runs Terraform in `infra/terraform/gcp`
+- The GCP workflow uses direct Workload Identity Federation from GitHub Actions and does not impersonate a deploy service account
 
 The deployment workflows expect repository secrets and cloud credentials to be configured first.
+
+For GCP, grant the GitHub workload identity principal the project-level roles it needs directly, for example on Artifact Registry, Cloud Run, and Terraform-managed resources. Because this workflow does not impersonate a service account, `GCP_DEPLOY_SERVICE_ACCOUNT` is not used.
 
 ## Terraform overview
 
