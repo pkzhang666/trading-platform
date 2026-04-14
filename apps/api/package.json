@@ -12,10 +12,12 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "@google-cloud/secret-manager": "^6.1.0",
     "@trading-platform/common": "0.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
+    "pg": "^8.16.0",
     "ws": "^8.18.2",
     "zod": "^3.24.4"
   },
@@ -23,6 +25,7 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/node": "^22.15.3",
+    "@types/pg": "^8.15.2",
     "@types/ws": "^8.18.1",
     "tsup": "^8.5.0",
     "tsx": "^4.19.3"

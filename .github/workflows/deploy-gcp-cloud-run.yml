@@ -1,4 +1,4 @@
-name: Deploy GCP GKE
+name: Deploy GCP Cloud Run
 
 on:
   workflow_dispatch:
@@ -6,14 +6,14 @@ on:
       environment:
         description: Deployment environment
         required: true
-        default: prod
+        default: dev
       canary_percent:
-        description: Percent of live traffic routed to the canary deployments after smoke tests
+        description: Percent of live traffic routed to the new revision after smoke tests
         required: true
         default: "10"
 
 concurrency:
-  group: deploy-gke-${{ github.event.inputs.environment }}
+  group: deploy-gcp-cloud-run-${{ github.event.inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +30,6 @@ jobs:
 
     env:
       GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
-      CLUSTER_NAME: trading-platform-${{ github.event.inputs.environment }}
 
     steps:
       - name: Checkout
@@ -53,8 +52,6 @@ jobs:
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
-        with:
-          install_components: gke-gcloud-auth-plugin
 
       - name: Configure Docker auth
         run: gcloud auth configure-docker $GCP_REGION-docker.pkg.dev --quiet
@@ -70,12 +67,12 @@ jobs:
 
       - name: Build and push Web image
         run: |
-          docker build -f apps/web/Dockerfile --build-arg VITE_API_BASE_URL=/api -t $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/web:${{ github.sha }} .
+          docker build -f apps/web/Dockerfile --build-arg VITE_API_BASE_URL=${{ vars.GCP_API_BASE_URL }} -t $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/web:${{ github.sha }} .
           docker push $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/web:${{ github.sha }}
 
       - name: Build and push Admin image
         run: |
-          docker build -f apps/admin/Dockerfile --build-arg VITE_API_BASE_URL=/api -t $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/admin:${{ github.sha }} .
+          docker build -f apps/admin/Dockerfile --build-arg VITE_API_BASE_URL=${{ vars.GCP_API_BASE_URL }} -t $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/admin:${{ github.sha }} .
           docker push $GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/admin:${{ github.sha }}
 
       - name: Setup Terraform
@@ -90,33 +87,40 @@ jobs:
           export_environment_variables: true
 
       - name: Terraform Init
-        run: terraform -chdir=infra/terraform/gcp-gke init
+        run: terraform -chdir=infra/terraform/gcp init
 
       - name: Terraform Apply
-        run: terraform -chdir=infra/terraform/gcp-gke apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}" -var="environment=${{ github.event.inputs.environment }}" -var="region=${{ env.GCP_REGION }}"
+        run: terraform -chdir=infra/terraform/gcp apply -auto-approve -var="project_id=${{ secrets.GCP_PROJECT_ID }}" -var="environment=${{ github.event.inputs.environment }}" -var="region=${{ env.GCP_REGION }}" -var="api_container_image=$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/api:${{ github.sha }}" -var="web_container_image=$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/web:${{ github.sha }}" -var="admin_container_image=$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/admin:${{ github.sha }}"
 
-      - name: Export GKE runtime outputs
+      - name: Deploy API canary
         run: |
-          echo "API_GSA_EMAIL=$(terraform -chdir=infra/terraform/gcp-gke output -raw api_workload_service_account_email)" >> $GITHUB_ENV
-          echo "CLOUD_SQL_INSTANCE_CONNECTION_NAME=$(terraform -chdir=infra/terraform/gcp-gke output -raw cloud_sql_instance_connection_name)" >> $GITHUB_ENV
-          echo "DATABASE_URL_SECRET_NAME=$(terraform -chdir=infra/terraform/gcp-gke output -raw database_url_secret_name)" >> $GITHUB_ENV
-          echo "PASSWORD_PEPPER_SECRET_NAME=$(terraform -chdir=infra/terraform/gcp-gke output -raw password_pepper_secret_name)" >> $GITHUB_ENV
-          echo "BOOTSTRAP_ADMIN_PASSWORD_SECRET_NAME=$(terraform -chdir=infra/terraform/gcp-gke output -raw bootstrap_admin_password_secret_name)" >> $GITHUB_ENV
-          echo "BOOTSTRAP_TRADER_PASSWORD_SECRET_NAME=$(terraform -chdir=infra/terraform/gcp-gke output -raw bootstrap_trader_password_secret_name)" >> $GITHUB_ENV
-          echo "SECRET_MANAGER_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}" >> $GITHUB_ENV
-
-      - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@v2
-        with:
-          cluster_name: ${{ env.CLUSTER_NAME }}
-          location: ${{ env.GCP_REGION }}
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-
-      - name: Deploy GKE canary
-        run: |
-          bash .github/scripts/gke-canary-deploy.sh \
-            "trading-platform" \
+          bash .github/scripts/gcp-cloud-run-canary.sh \
+            "${{ secrets.GCP_PROJECT_ID }}" \
+            "${{ env.GCP_REGION }}" \
+            "trading-platform-${{ github.event.inputs.environment }}-api" \
             "$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/api:${{ github.sha }}" \
+            "${{ github.event.inputs.canary_percent }}" \
+            "/ready" \
+            "\"ok\":true" \
+            "90" \
+            "5"
+
+      - name: Deploy trader web canary
+        run: |
+          bash .github/scripts/gcp-cloud-run-canary.sh \
+            "${{ secrets.GCP_PROJECT_ID }}" \
+            "${{ env.GCP_REGION }}" \
+            "trading-platform-${{ github.event.inputs.environment }}-web" \
             "$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/web:${{ github.sha }}" \
+            "${{ github.event.inputs.canary_percent }}" \
+            "/"
+
+      - name: Deploy admin canary
+        run: |
+          bash .github/scripts/gcp-cloud-run-canary.sh \
+            "${{ secrets.GCP_PROJECT_ID }}" \
+            "${{ env.GCP_REGION }}" \
+            "trading-platform-${{ github.event.inputs.environment }}-admin" \
             "$GCP_REGION-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/trading-platform-${{ github.event.inputs.environment }}/admin:${{ github.sha }}" \
-            "${{ github.event.inputs.canary_percent }}"
+            "${{ github.event.inputs.canary_percent }}" \
+            "/"

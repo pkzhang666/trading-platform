@@ -6,6 +6,7 @@
 
 - `apps/api`: trading API, matching engine, balance ledger, wallet request handling
 - `apps/api/src/live-market-data.ts`: Coinbase Exchange market data adapter for BTC/USD and ETH/USD
+- `apps/api/src/postgres-platform.ts`: Cloud SQL-backed trading, wallet, and ledger runtime
 - `apps/web`: trader interface
 - `apps/admin`: operations console
 - `packages/common`: shared domain types
@@ -49,10 +50,13 @@ The intended production split is:
 ### GCP
 
 - Artifact Registry for images
-- Cloud Run for stateless app services
-- IAM service accounts per service
+- GKE for production microservice execution and Gateway API traffic management
+- Cloud Run for lighter-weight sandbox environments
+- workload identity and federated CI authentication
+- Cloud SQL for PostgreSQL-backed wallet and ledger persistence
+- Secret Manager for runtime secret delivery
 - Cloud Logging and Cloud Monitoring
-- reusable Terraform modules for service account, registry, and runtime service composition
+- reusable Terraform modules for project services, networking, cluster, registry, and runtime composition
 
 ### Multi-cloud
 

@@ -35,6 +35,15 @@ resource "google_cloud_run_v2_service" "this" {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
   }
+
+  # Keep Terraform authoritative for service shape while allowing the CD workflow
+  # to deploy immutable revisions and manage live traffic splits for canaries.
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image,
+      traffic,
+    ]
+  }
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public_invoker" {

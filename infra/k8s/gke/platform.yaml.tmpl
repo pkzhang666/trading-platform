@@ -1,0 +1,624 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trading-platform
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trading-platform-api
+  namespace: trading-platform
+  annotations:
+    iam.gke.io/gcp-service-account: __API_GSA_EMAIL__
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trading-platform-api
+  namespace: trading-platform
+data:
+  API_HOST: "0.0.0.0"
+  API_PORT: "4000"
+  SECRET_MANAGER_PROJECT_ID: "__SECRET_MANAGER_PROJECT_ID__"
+  DATABASE_URL_SECRET_NAME: "__DATABASE_URL_SECRET_NAME__"
+  PASSWORD_PEPPER_SECRET_NAME: "__PASSWORD_PEPPER_SECRET_NAME__"
+  BOOTSTRAP_ADMIN_PASSWORD_SECRET_NAME: "__BOOTSTRAP_ADMIN_PASSWORD_SECRET_NAME__"
+  BOOTSTRAP_TRADER_PASSWORD_SECRET_NAME: "__BOOTSTRAP_TRADER_PASSWORD_SECRET_NAME__"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-stable
+  namespace: trading-platform
+  labels:
+    app: api
+    track: stable
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api
+      track: stable
+  template:
+    metadata:
+      labels:
+        app: api
+        track: stable
+    spec:
+      serviceAccountName: trading-platform-api
+      containers:
+        - name: api
+          image: __API_STABLE_IMAGE__
+          ports:
+            - containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: trading-platform-api
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 4000
+            failureThreshold: 60
+            periodSeconds: 5
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+          args:
+            - "--structured-logs"
+            - "--private-ip"
+            - "--port=5432"
+            - "__CLOUD_SQL_INSTANCE_CONNECTION_NAME__"
+          securityContext:
+            runAsNonRoot: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-canary
+  namespace: trading-platform
+  labels:
+    app: api
+    track: canary
+spec:
+  replicas: __API_CANARY_REPLICAS__
+  selector:
+    matchLabels:
+      app: api
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: api
+        track: canary
+    spec:
+      serviceAccountName: trading-platform-api
+      containers:
+        - name: api
+          image: __API_CANARY_IMAGE__
+          ports:
+            - containerPort: 4000
+          envFrom:
+            - configMapRef:
+                name: trading-platform-api
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 4000
+            failureThreshold: 60
+            periodSeconds: 5
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.1
+          args:
+            - "--structured-logs"
+            - "--private-ip"
+            - "--port=5432"
+            - "__CLOUD_SQL_INSTANCE_CONNECTION_NAME__"
+          securityContext:
+            runAsNonRoot: true
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-stable
+  namespace: trading-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api
+      track: stable
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-stable
+  namespace: trading-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-stable
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-stable
+  namespace: trading-platform
+spec:
+  selector:
+    app: api
+    track: stable
+  ports:
+    - name: http
+      port: 4000
+      targetPort: 4000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-canary
+  namespace: trading-platform
+spec:
+  selector:
+    app: api
+    track: canary
+  ports:
+    - name: http
+      port: 4000
+      targetPort: 4000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-stable
+  namespace: trading-platform
+  labels:
+    app: web
+    track: stable
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+      track: stable
+  template:
+    metadata:
+      labels:
+        app: web
+        track: stable
+    spec:
+      containers:
+        - name: web
+          image: __WEB_STABLE_IMAGE__
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 150m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-canary
+  namespace: trading-platform
+  labels:
+    app: web
+    track: canary
+spec:
+  replicas: __WEB_CANARY_REPLICAS__
+  selector:
+    matchLabels:
+      app: web
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: web
+        track: canary
+    spec:
+      containers:
+        - name: web
+          image: __WEB_CANARY_IMAGE__
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-stable
+  namespace: trading-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: web
+      track: stable
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: web-stable
+  namespace: trading-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-stable
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-stable
+  namespace: trading-platform
+spec:
+  selector:
+    app: web
+    track: stable
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-canary
+  namespace: trading-platform
+spec:
+  selector:
+    app: web
+    track: canary
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-stable
+  namespace: trading-platform
+  labels:
+    app: admin
+    track: stable
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: admin
+      track: stable
+  template:
+    metadata:
+      labels:
+        app: admin
+        track: stable
+    spec:
+      containers:
+        - name: admin
+          image: __ADMIN_STABLE_IMAGE__
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 150m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-canary
+  namespace: trading-platform
+  labels:
+    app: admin
+    track: canary
+spec:
+  replicas: __ADMIN_CANARY_REPLICAS__
+  selector:
+    matchLabels:
+      app: admin
+      track: canary
+  template:
+    metadata:
+      labels:
+        app: admin
+        track: canary
+    spec:
+      containers:
+        - name: admin
+          image: __ADMIN_CANARY_IMAGE__
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: admin-stable
+  namespace: trading-platform
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: admin
+      track: stable
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: admin-stable
+  namespace: trading-platform
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: admin-stable
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-stable
+  namespace: trading-platform
+spec:
+  selector:
+    app: admin
+    track: stable
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-canary
+  namespace: trading-platform
+spec:
+  selector:
+    app: admin
+    track: canary
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public-gateway
+  namespace: trading-platform
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: admin-gateway
+  namespace: trading-platform
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: public-route
+  namespace: trading-platform
+spec:
+  parentRefs:
+    - name: public-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: api-stable
+          port: 4000
+          weight: __API_STABLE_WEIGHT__
+        - name: api-canary
+          port: 4000
+          weight: __API_CANARY_WEIGHT__
+    - matches:
+        - path:
+            type: Exact
+            value: /health
+      backendRefs:
+        - name: api-stable
+          port: 4000
+          weight: __API_STABLE_WEIGHT__
+        - name: api-canary
+          port: 4000
+          weight: __API_CANARY_WEIGHT__
+    - matches:
+        - path:
+            type: Exact
+            value: /ready
+      backendRefs:
+        - name: api-stable
+          port: 4000
+          weight: __API_STABLE_WEIGHT__
+        - name: api-canary
+          port: 4000
+          weight: __API_CANARY_WEIGHT__
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /ws
+      backendRefs:
+        - name: api-stable
+          port: 4000
+          weight: __API_STABLE_WEIGHT__
+        - name: api-canary
+          port: 4000
+          weight: __API_CANARY_WEIGHT__
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: web-stable
+          port: 80
+          weight: __WEB_STABLE_WEIGHT__
+        - name: web-canary
+          port: 80
+          weight: __WEB_CANARY_WEIGHT__
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: admin-route
+  namespace: trading-platform
+spec:
+  parentRefs:
+    - name: admin-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: admin-stable
+          port: 80
+          weight: __ADMIN_STABLE_WEIGHT__
+        - name: admin-canary
+          port: 80
+          weight: __ADMIN_CANARY_WEIGHT__

@@ -11,7 +11,7 @@
     "build": "npm run build -w @trading-platform/common && npm run build -w @trading-platform/api && npm run build -w @trading-platform/web && npm run build -w @trading-platform/admin",
     "check": "npm run typecheck -w @trading-platform/common && npm run typecheck -w @trading-platform/api && npm run typecheck -w @trading-platform/web && npm run typecheck -w @trading-platform/admin",
     "test": "npm run test -w @trading-platform/api",
-    "infra:validate": "terraform -chdir=infra/terraform/aws init -backend=false && terraform -chdir=infra/terraform/aws validate && terraform -chdir=infra/terraform/gcp init -backend=false && terraform -chdir=infra/terraform/gcp validate",
+    "infra:validate": "terraform -chdir=infra/terraform/aws init -backend=false && terraform -chdir=infra/terraform/aws validate && terraform -chdir=infra/terraform/gcp init -backend=false && terraform -chdir=infra/terraform/gcp validate && terraform -chdir=infra/terraform/gcp-gke init -backend=false && terraform -chdir=infra/terraform/gcp-gke validate",
     "docker:build": "docker compose build",
     "lint": "npm run lint -w @trading-platform/api && npm run lint -w @trading-platform/web && npm run lint -w @trading-platform/admin",
     "start": "npm run start -w @trading-platform/api"

@@ -1,0 +1,64 @@
+name: Promote GCP Cloud Run Canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        default: dev
+
+concurrency:
+  group: deploy-gcp-cloud-run-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    defaults:
+      run:
+        working-directory: trading platform
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_REGION: ${{ vars.GCP_REGION || 'us-central1' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Promote API to 100%
+        run: |
+          bash .github/scripts/gcp-cloud-run-promote.sh \
+            "${{ secrets.GCP_PROJECT_ID }}" \
+            "${{ env.GCP_REGION }}" \
+            "trading-platform-${{ github.event.inputs.environment }}-api"
+
+      - name: Promote trader web to 100%
+        run: |
+          bash .github/scripts/gcp-cloud-run-promote.sh \
+            "${{ secrets.GCP_PROJECT_ID }}" \
+            "${{ env.GCP_REGION }}" \
+            "trading-platform-${{ github.event.inputs.environment }}-web"
+
+      - name: Promote admin to 100%
+        run: |
+          bash .github/scripts/gcp-cloud-run-promote.sh \
+            "${{ secrets.GCP_PROJECT_ID }}" \
+            "${{ env.GCP_REGION }}" \
+            "trading-platform-${{ github.event.inputs.environment }}-admin"
